@@ -21,6 +21,7 @@ const productSchema = new mango.Schema(
     price: {
       type: Number,
       required: true,
+      min: 0,
     },
 
     mrp: {

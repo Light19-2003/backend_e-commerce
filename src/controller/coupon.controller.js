@@ -29,6 +29,12 @@ const getMinPurchaseAmount = (body = {}) =>
   body.minPrice ??
   body.minimumAmount ??
   body.minOrderAmount;
+const getMaxPurchaseAmount = (body = {}) =>
+  body.maxPurchaseAmount ??
+  body.maximumPrice ??
+  body.maxPrice ??
+  body.maximumAmount ??
+  body.maxOrderAmount;
 const normalizeEmail = (email = "") => String(email || "").trim().toLowerCase();
 const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -78,6 +84,7 @@ const serializeCoupon = (coupon) => {
     expireDate: source.expireDate,
     maxLimit: source.maxLimit,
     minPurchaseAmount: Number(source.minPurchaseAmount) || 0,
+    maxPurchaseAmount: Number(source.maxPurchaseAmount) || 0,
     usage: Array.isArray(source.usedBy)
       ? source.usedBy.reduce((total, entry) => total + Number(entry.count || 0), 0)
       : source.usage || 0,
@@ -94,6 +101,17 @@ const buildCouponPayload = async (body = {}, existing = {}) => {
     body.targetType !== undefined || productId !== undefined || categoryId !== undefined;
   const payload = {};
 
+  if (body.couponId !== undefined) {
+    const couponId = String(body.couponId || "").trim().toUpperCase();
+    if (couponId) {
+      if (!/^[A-Z0-9][A-Z0-9_-]{3,31}$/.test(couponId)) {
+        throw couponError(
+          "Coupon code must be 4-32 characters using letters, numbers, hyphens, or underscores",
+        );
+      }
+      payload.couponId = couponId;
+    }
+  }
   if (body.discountType !== undefined) payload.discountType = body.discountType;
   if (body.discountValue !== undefined) payload.discountValue = Number(body.discountValue);
   if (body.startDate !== undefined) payload.startDate = parseDate(body.startDate);
@@ -101,6 +119,9 @@ const buildCouponPayload = async (body = {}, existing = {}) => {
   if (body.maxLimit !== undefined) payload.maxLimit = Number(body.maxLimit);
   if (getMinPurchaseAmount(body) !== undefined) {
     payload.minPurchaseAmount = Number(getMinPurchaseAmount(body));
+  }
+  if (getMaxPurchaseAmount(body) !== undefined) {
+    payload.maxPurchaseAmount = Number(getMaxPurchaseAmount(body));
   }
   if (body.isActive !== undefined) payload.isActive = Boolean(body.isActive);
 
@@ -172,6 +193,7 @@ const buildCouponPayload = async (body = {}, existing = {}) => {
     targetType: "all",
     maxLimit: 1,
     minPurchaseAmount: 0,
+    maxPurchaseAmount: 0,
     isActive: true,
     ...existing,
     ...payload,
@@ -204,6 +226,18 @@ const buildCouponPayload = async (body = {}, existing = {}) => {
     Number(merged.minPurchaseAmount) < 0
   ) {
     throw couponError("Minimum price must be 0 or greater");
+  }
+  if (
+    Number.isNaN(Number(merged.maxPurchaseAmount)) ||
+    Number(merged.maxPurchaseAmount) < 0
+  ) {
+    throw couponError("Maximum purchase amount must be 0 or greater");
+  }
+  if (
+    Number(merged.maxPurchaseAmount) > 0 &&
+    Number(merged.maxPurchaseAmount) < Number(merged.minPurchaseAmount)
+  ) {
+    throw couponError("Maximum purchase amount cannot be below the minimum price");
   }
 
   return payload;
