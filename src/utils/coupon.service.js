@@ -144,6 +144,12 @@ export const calculateCouponDiscount = async ({
       `Eligible cart value must be at least Rs ${minPurchaseAmount} to use this coupon`,
     );
   }
+  const maxPurchaseAmount = Math.max(0, Number(coupon.maxPurchaseAmount || 0));
+  if (maxPurchaseAmount > 0 && eligibleSubtotal > maxPurchaseAmount) {
+    throw couponError(
+      `Eligible cart value must not exceed Rs ${maxPurchaseAmount} to use this coupon`,
+    );
+  }
 
   const rawDiscount =
     coupon.discountType === "percentage"

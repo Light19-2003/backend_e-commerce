@@ -171,6 +171,22 @@ export const CreateProduct = async (req, res) => {
       });
     }
 
+    const productPrice = Number(price);
+    const productMrp = mrp === undefined || mrp === "" ? productPrice : Number(mrp);
+    const productStock = Number(stock);
+
+    if (!Number.isFinite(productPrice) || productPrice < 0) {
+      return res.status(400).json({ message: "Price cannot be negative" });
+    }
+    if (!Number.isFinite(productMrp) || productMrp < 0) {
+      return res.status(400).json({ message: "MRP cannot be negative" });
+    }
+    if (!Number.isInteger(productStock) || productStock < 0) {
+      return res.status(400).json({
+        message: "Stock must be a non-negative whole number",
+      });
+    }
+
     console.log(req.body);
 
     if (!req.file) {
@@ -188,9 +204,6 @@ export const CreateProduct = async (req, res) => {
       quality: 80,
     });
 
-    const productPrice = Number(price);
-    const productMrp = mrp === undefined || mrp === "" ? productPrice : Number(mrp);
-
     const product = await Product.create({
       name,
       description,
@@ -201,7 +214,7 @@ export const CreateProduct = async (req, res) => {
       brand,
       producthightlight,
       styles: normalizeProductStyles(styles),
-      stock: Number(stock),
+      stock: productStock,
       bestseller: toBoolean(bestseller),
 
       image: imageResult.image,
@@ -421,13 +434,33 @@ export const UpdateProduct = async (req, res) => {
     if (producthightlight !== undefined) product.producthightlight = producthightlight;
     if (styles !== undefined) product.styles = normalizeProductStyles(styles);
     if (description !== undefined) product.description = description;
-    if (price !== undefined && price !== "") product.price = Number(price);
-    if (mrp !== undefined && mrp !== "") product.mrp = Number(mrp);
+    if (price !== undefined && price !== "") {
+      const nextPrice = Number(price);
+      if (!Number.isFinite(nextPrice) || nextPrice < 0) {
+        return res.status(400).json({ message: "Price cannot be negative" });
+      }
+      product.price = nextPrice;
+    }
+    if (mrp !== undefined && mrp !== "") {
+      const nextMrp = Number(mrp);
+      if (!Number.isFinite(nextMrp) || nextMrp < 0) {
+        return res.status(400).json({ message: "MRP cannot be negative" });
+      }
+      product.mrp = nextMrp;
+    }
     if ((product.mrp === undefined || product.mrp === null) && product.price !== undefined) {
       product.mrp = product.price;
     }
     if (category_id !== undefined && category_id !== "") product.category_id = category_id;
-    if (stock !== undefined && stock !== "") product.stock = Number(stock);
+    if (stock !== undefined && stock !== "") {
+      const nextStock = Number(stock);
+      if (!Number.isInteger(nextStock) || nextStock < 0) {
+        return res.status(400).json({
+          message: "Stock must be a non-negative whole number",
+        });
+      }
+      product.stock = nextStock;
+    }
     if (bestseller !== undefined) product.bestseller = toBoolean(bestseller);
     await product.save();
     return res.status(200).json({
