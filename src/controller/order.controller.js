@@ -3,6 +3,10 @@ import ProductModel from "../Model/product.model.js";
 import UserProfile from "../Model/userprofile.model.js";
 import ReferralSetting from "../Model/ReferralSetting.model.js";
 import { prepareOrderData } from "../utils/order-pricing.service.js";
+import {
+  cancelShiprocketOrder,
+  isShiprocketConfigured,
+} from "../utils/shiprocket.service.js";
 
 const ADMIN_PURCHASE_ROLES = ["admin", "superAdmin", "orderManager"];
 const ADMIN_PURCHASE_MESSAGE =
@@ -305,6 +309,17 @@ export const CancelOrder = async (req, res) => {
       });
     }
 
+    if (order.shiprocket?.orderId && isShiprocketConfigured()) {
+      try {
+        await cancelShiprocketOrder(order.shiprocket.orderId);
+      } catch (error) {
+        return res.status(error.statusCode || 502).json({
+          success: false,
+          message: `Order was not cancelled because Shiprocket cancellation failed: ${error.message}`,
+        });
+      }
+    }
+
     for (const item of order.items) {
       await ProductModel.findByIdAndUpdate(item.product, {
         $inc: { stock: item.quantity },
@@ -312,6 +327,12 @@ export const CancelOrder = async (req, res) => {
     }
 
     order.orderStatus = "Cancelled";
+    if (order.shiprocket?.orderId) {
+      order.shiprocket.syncStatus = "cancelled";
+      order.shiprocket.status = "CANCELLED";
+      order.shiprocket.lastError = null;
+      order.shiprocket.lastSyncedAt = new Date();
+    }
     await order.save();
 
     return res.status(200).json({

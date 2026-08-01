@@ -195,6 +195,67 @@ const OrderSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    shiprocket: {
+      orderId: {
+        type: Number,
+        default: null,
+        index: true,
+      },
+      shipmentId: {
+        type: Number,
+        default: null,
+        index: true,
+      },
+      awbCode: {
+        type: String,
+        default: null,
+        index: true,
+      },
+      courierId: {
+        type: Number,
+        default: null,
+      },
+      courierName: {
+        type: String,
+        default: null,
+      },
+      status: {
+        type: String,
+        default: null,
+      },
+      statusCode: {
+        type: Number,
+        default: null,
+      },
+      syncStatus: {
+        type: String,
+        enum: ["not_created", "created", "awb_assigned", "pickup_scheduled", "cancelled", "failed"],
+        default: "not_created",
+      },
+      package: {
+        length: { type: Number, default: null },
+        breadth: { type: Number, default: null },
+        height: { type: Number, default: null },
+        weight: { type: Number, default: null },
+      },
+      labelUrl: {
+        type: String,
+        default: null,
+      },
+      invoiceUrl: {
+        type: String,
+        default: null,
+      },
+      lastError: {
+        type: String,
+        default: null,
+      },
+      lastSyncedAt: {
+        type: Date,
+        default: null,
+      },
+    },
   },
   {
     timestamps: true,
