@@ -49,6 +49,22 @@ let googleCertCache = {
 const escapeRegex = (value = "") =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const hashPasswordResetToken = (resetToken) =>
+  crypto.createHash("sha256").update(String(resetToken)).digest("hex");
+
+const getPasswordResetTokenTtlMs = () => {
+  const configuredMinutes = Number.parseInt(
+    process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES,
+    10,
+  );
+  const ttlMinutes =
+    Number.isInteger(configuredMinutes) && configuredMinutes > 0
+      ? Math.min(configuredMinutes, 1440)
+      : 15;
+
+  return ttlMinutes * 60 * 1000;
+};
+
 const findUserByEmail = async (email) => {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) return null;
@@ -459,7 +475,7 @@ export const CreateUser = async (req, res) => {
     // 8. Send verification email
     // await sendEmail(Email, token);
 
-    await SendVerficationEmail(Email, token);
+    await SendEmail(Email, token);
 
     // 9. Remove password from response
     const { password, ...userData } = user.toObject();
@@ -554,32 +570,42 @@ export const ForgetPassword = async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email);
 
-    if (!email || !EMAIL_PATTERN.test(email)) {
+    if (!email) {
       return res.status(400).json({
-        message: "Enter a valid email address",
+        message: "Email is required",
       });
     }
 
-    // Find user
     const user = await findUserByEmail(email);
 
     if (!user) {
-      return res.status(200).json({
-        message: "If an account exists, a password reset email has been sent.",
+      return res.status(404).json({
+        message: "User not found",
       });
     }
 
-    // Generate reset token
     const resetToken = crypto.randomBytes(64).toString("hex");
+    const passwordResetTokenHash = hashPasswordResetToken(resetToken);
+    const passwordResetTokenExpiresAt = new Date(
+      Date.now() + getPasswordResetTokenTtlMs(),
+    );
 
-    // Save token
-    user.Resettoken = resetToken;
-    user.resetTokenExpiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    // Use the native collection update so any legacy plaintext token is
+    // removed even after the old Resettoken path is removed from the schema.
+    await UserModel.collection.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          passwordResetTokenHash,
+          passwordResetTokenExpiresAt,
+        },
+        $unset: { Resettoken: "" },
+      },
+    );
 
-    await user.save();
+    await sendEmail(user.email, resetToken);
 
-    // Send email
-    await sendEmail(email, resetToken);
+    console.log(`Password reset email sent to ${resetToken}`);
 
     return res.status(200).json({
       message: "Password reset email sent successfully.",
@@ -603,35 +629,32 @@ export const ResetPassword = async (req, res) => {
       });
     }
 
-    if (String(password).length < MIN_PASSWORD_LENGTH) {
-      return res.status(400).json({
-        message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
-      });
-    }
+    const hashedPassword = await CreateharhPassword(password);
+    const passwordResetTokenHash = hashPasswordResetToken(resetToken);
 
-    // Find user by reset token
-    const user = await UserModel.findOne({
-      Resettoken: resetToken,
-      resetTokenExpiresAt: { $gt: new Date() },
-    });
+    // Matching and clearing in one database operation prevents the same
+    // one-time token from succeeding in two concurrent requests.
+    const user = await UserModel.findOneAndUpdate(
+      {
+        passwordResetTokenHash,
+        passwordResetTokenExpiresAt: { $gt: new Date() },
+      },
+      {
+        $set: { password: hashedPassword },
+        $unset: {
+          passwordResetTokenHash: "",
+          passwordResetTokenExpiresAt: "",
+          Resettoken: "",
+        },
+      },
+      { returnDocument: "after" },
+    );
 
     if (!user) {
       return res.status(404).json({
         message: "Invalid or expired reset token",
       });
     }
-
-    // Check token expiration
-
-    // Hash new password
-    const hashedPassword = await CreateharhPassword(password);
-
-    // Update user
-    user.password = hashedPassword;
-    user.Resettoken = null;
-    user.resetTokenExpiresAt = null;
-
-    await user.save();
 
     return res.status(200).json({
       message: "Password reset successfully.",
